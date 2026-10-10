@@ -1,12 +1,38 @@
 # CodexDesktop-LxRebuild
 
-把 Codex Desktop App 重新打包成 Windows x64 免安装 zip。
+将 Codex Desktop 官方 Windows 商店包重新打包为 **Windows x64 免安装 ZIP**，通过 GitHub Actions 自动检查上游版本、构建并发布到 Releases。
 
-这个仓库做的是 **Codex Desktop App**，不是单独的 Codex CLI。新版使用 ChatGPT 桌面宿主，产物解压后运行 `ChatGPT.exe` 即可使用。
+[![Windows 构建](https://github.com/liuxinshuo/CodexDesktop-LxRebuild/actions/workflows/sync.yml/badge.svg?branch=main)](https://github.com/liuxinshuo/CodexDesktop-LxRebuild/actions/workflows/sync.yml)
 
-## 下载与更新
+**[下载最新版](https://github.com/liuxinshuo/CodexDesktop-LxRebuild/releases/latest)** · [历史版本](https://github.com/liuxinshuo/CodexDesktop-LxRebuild/releases) · [构建记录](https://github.com/liuxinshuo/CodexDesktop-LxRebuild/actions/workflows/sync.yml)
 
-最新版本在 [GitHub Releases](https://github.com/liuxinshuo/CodexDesktop-LxRebuild/releases)。每次发布保留全量包，可以安全覆盖上一版时额外提供增量包，附件命名如下：
+> 本项目提供非官方重打包版本。当前正式构建仅支持 Windows x64。
+
+## 下载与启动
+
+1. 打开 [最新 Release](https://github.com/liuxinshuo/CodexDesktop-LxRebuild/releases/latest)，在 **Assets** 中下载 `Codex-win-x64-<App版本>-cli-<CLI版本>.zip`。
+2. 解压到一个新目录。
+3. 双击 `启动 Codex.cmd` 或 `ChatGPT.exe`。
+
+新版使用 ChatGPT 桌面宿主，`ChatGPT.exe` 是当前程序入口。Release 中的 `Source code (zip)` 和 `Source code (tar.gz)` 是仓库源码，不是可运行的程序包。
+
+## 更新已有版本
+
+| 你的情况 | 选择哪个包 | 更新方式 |
+| --- | --- | --- |
+| 首次使用，或没有可用增量包 | 全量 ZIP | 解压到新目录后运行 |
+| 本地 App 与 CLI 版本均匹配增量包标明的旧版 | `update-from` 增量 ZIP | 完全退出程序后，解压到原程序目录并替换全部文件 |
+| 本地版本不匹配，或跳过多个版本 | 最新全量 ZIP | 解压到新目录；也可按对应版本顺序安装增量 |
+
+**使用增量包前，请确认：**
+
+- 在原程序目录的 `build-info.json` 中查看 App 和 CLI 版本，两者都必须与增量包的旧版一致。
+- 完全退出程序，包括后台进程。
+- 解压目标为原来包含 `ChatGPT.exe` 的目录，保留 ZIP 内部目录结构并选择替换全部文件。
+
+每个 Release 都提供全量包；只有可以安全覆盖旧版时，才会额外提供增量包。首次发布没有旧包作为基线，仅提供全量包。历史版本不会自动补发增量，具体以 Release 附件为准。
+
+附件命名：
 
 ```text
 Codex-win-x64-<App版本>-cli-<CLI版本>.zip
@@ -14,89 +40,68 @@ Codex-win-x64-<新App版本>-cli-<新CLI版本>-update-from-<旧App版本>-cli-<
 SHA256SUMS.txt
 ```
 
-以对应 Release 的实际附件为准：历史版本不会自动补发增量包，附件中没有 `update-from` ZIP 时，请下载全量包。
+增量包包含新增或内容变化的完整文件。构建时会校验旧包 SHA256，并验证覆盖后的文件和目录与新版全量包一致。若新版删除文件、调整目录或改变文件类型，无法通过直接覆盖得到一致结果，本次只发布全量包，并在 Release 说明原因。`app.asar` 和大型 EXE 变化时仍需整文件下载，增量包不保证总是很小。
 
-| 使用情况 | 下载哪个包 | 如何使用 |
-| --- | --- | --- |
-| 首次安装、本地版本不匹配，或本次没有增量附件 | 全量 ZIP | 解压到新目录，运行 `启动 Codex.cmd` 或 `ChatGPT.exe` |
-| 本地 App 和 CLI 版本都与增量包标明的旧版一致 | `update-from` 增量 ZIP | 完全退出程序（包括后台进程），解压到原程序目录，选择替换全部文件，再重新启动 |
+### 校验下载文件
 
-增量包解压目标是原来包含 `ChatGPT.exe` 的目录，保留 ZIP 内部目录结构即可，不需要更新脚本。包内实际桌面宿主由 Microsoft Store 包的 `AppxManifest.xml` 决定。
+`SHA256SUMS.txt` 列出本次发布的 ZIP 校验值。在下载目录运行以下 PowerShell 命令，再与校验文件中的值对比：
 
-增量仅适用于文件名和 Release 说明中标明的旧版，App 和 CLI 版本都必须匹配；本地版本可以查看程序目录的 `build-info.json`。跳过多个版本时，依次安装对应增量，或下载最新版全量包并解压到新目录。
-
-`SHA256SUMS.txt` 列出该 Release 实际提供的 ZIP 校验值；提供增量时会同时列出全量和增量包。
-
-增量包含新增或内容变化的完整文件，沿用全量包的目录结构。构建时会校验上一版全量包的 SHA256，并实际解压覆盖增量，确认文件和目录与新版全量包一致。如果新版删除文件/目录或改变文件类型，手动覆盖无法清理旧内容，本次仅发布全量包，并在 Release 说明原因。`app.asar` 和大型 EXE 变化时仍会整体包含，增量大小取决于实际变化。
-
-## 工作方式
-
-自动流程在：
-
-```text
-.github/workflows/sync.yml
+```powershell
+Get-FileHash -LiteralPath '实际下载的文件名.zip' -Algorithm SHA256
 ```
 
-它会：
+## 自动构建与发布
 
-1. 检查 Codex Desktop 当前版本。
-2. 从 Microsoft Store 下载 Windows x64 MSIX 包。
-3. 解包 Electron 应用。
-4. Patch `app.asar`。
-5. 用同一版本的官方 `@openai/codex` 替换 `codex.exe` 和三个 Windows 配套程序。
-6. 重新打包成同时标明 App 和 CLI 版本的全量 ZIP。
-7. 下载上一版正式 Release 的全量包，生成并验证可以手动覆盖的增量 ZIP。
-8. 将全量包、可用的增量包及两者的 SHA256 上传到本仓库 Release。
+正式流程：[`.github/workflows/sync.yml`](.github/workflows/sync.yml)。所有构建步骤在 GitHub 云端运行，无需本地部署，也无需保持自己的电脑开机。
 
-默认每天北京时间 05:43 定时触发检查，实际启动时间受 GitHub 调度队列影响。也可以在 GitHub Actions 里手动运行 `Build Codex Desktop for Windows`。
+| 项目 | 当前配置 |
+| --- | --- |
+| 定时检查 | 每天北京时间 05:43（UTC 21:43） |
+| 手动构建 | Actions → Build Codex Desktop for Windows → Run workflow |
+| 强制重建 | 手动运行时勾选 `force_build` |
+| 发布位置 | 本仓库 GitHub Releases |
+| 构建授权 | Actions 自带的 `GITHUB_TOKEN`，工作流声明 `contents: write` |
 
-如果对应的 App 和内置 Codex CLI 版本组合已经发布，workflow 会跳过 patch 和打包。App 和 CLI 版本同时展示在产物名、Release 标题和包内的 `build-info.json` 中；Windows MSIX 版本会显示在中文 Release 说明里。
+构建流程：
 
-提交新流程不会立刻重打包，也不会自动为已有 Release 补发增量。需要重建当前已发布版本时，在手动运行 Actions 时开启 `force_build`。
+1. 检查 Microsoft Store Windows 包版本和 npm 官方 `@openai/codex` CLI 版本，已发布的版本组合会跳过打包。
+2. 下载 Windows x64 MSIX，解包桌面程序并应用 `app.asar` 补丁。
+3. 使用当前官方 CLI 版本替换 `codex.exe` 及三个配套程序。
+4. 生成全量 ZIP；存在可用旧包时，尝试生成并验证增量 ZIP。
+5. 生成 SHA256 校验文件，发布到本仓库 Releases，并核对附件名称和大小。
 
-## 费用说明
+App 和 CLI 版本可在文件名、Release 说明及 `build-info.json` 中查看；Windows MSIX 包版本见 Release 说明。GitHub 定时调度可能延迟，05:43 是计划触发时间。提交代码不会立即触发正式打包；需要立即构建时，请手动运行工作流。
 
-如果仓库是 public，标准 GitHub-hosted Actions 通常免费。
+## 使用说明
 
-如果仓库是 private，会消耗 GitHub Actions 免费额度。生成增量还需要下载上一版全量包并比较文件，运行时间取决于下载和压缩速度；没有新版本时会跳过打包。
+- **自动发布与本地升级不同**：云端会自动生成新版，正式便携版仍需下载全量包或增量包更新；原客户端内置更新器已由补丁禁用。
+- **组件预览**：本仓库已禁用 `Publish component updater preview` 工作流；当前下载和更新说明针对正式版本。
+- **下载来源**：构建仍依赖 Microsoft Store 下载接口，CLI 来自 npm 官方包。上游下载失败时，可在 Actions 中查看日志并重试。
+- **脚本维护**：自动流程跟踪官方程序和 CLI 版本，不会自动同步原作者后续修改的仓库代码。
+- **运行费用**：公开仓库使用标准 GitHub-hosted runner 的运行时间免费；私有仓库会消耗账号额度。参见 [GitHub Actions 计费说明](https://docs.github.com/en/billing/concepts/product-billing/github-actions)。
+- **定时任务**：公开仓库连续 60 天没有仓库活动时，GitHub 会自动禁用定时工作流，需要在 Actions 中重新启用。参见 [schedule 说明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)。
 
-不想消耗太多额度，可以改成只手动触发、进一步降低检查频率，或者把仓库改成 public。
+<details>
+<summary>本地构建（可选）</summary>
 
-## 本地构建
+需要 Node.js 24 和 7-Zip。运行 `npm test` 时，7-Zip 需要以 `7zz` 命令出现在 PATH 中。
 
-需要：
+在仓库目录执行：
 
-- Node.js 24
-- 7-Zip
-
-运行打包测试时，7-Zip 需要以 `7zz` 命令出现在 PATH 中，执行 `npm test`。
-
-命令：
-
-```bash
+```powershell
 npm ci
+npm test
 node scripts/sync-upstream.js --force --skip-mac
 node scripts/patch-all.js win
 npm run build:win-x64
 ```
 
-产物在：
+产物位于 `out/Codex-win-x64-<App版本>-cli-<CLI版本>.zip`。
 
-```text
-out/Codex-win-x64-<App版本>-cli-<CLI版本>.zip
-```
+</details>
 
-## 注意事项
+## 项目来源
 
-这是非官方重打包，不是 OpenAI 官方发布的免安装包。
-
-它仍然依赖 Microsoft Store 的下载接口，只是让 GitHub Actions 去下载和重打包，不需要你在自己的 Windows 机器上打开 Microsoft Store。
-
-当前只构建 Windows x64，不构建 macOS、Linux 或 Windows arm64。
-
-## 来源
-
-重打包流程基于 [Haleclipse/CodexDesktop-Rebuild](https://github.com/Haleclipse/CodexDesktop-Rebuild) 整理，并收窄为 Windows x64 Desktop App 构建。
-
-OpenAI Codex 原始项目：[openai/codex](https://github.com/openai/codex)
-本仓库导入自 [WSGsety/rebuild-codex-desktop](https://github.com/WSGsety/rebuild-codex-desktop)，使用独立仓库自动构建与发布。
+- 本仓库导入自 [WSGsety/rebuild-codex-desktop](https://github.com/WSGsety/rebuild-codex-desktop)，使用独立仓库构建和发布。
+- 重打包流程基于 [Haleclipse/CodexDesktop-Rebuild](https://github.com/Haleclipse/CodexDesktop-Rebuild)，保留 Windows x64 Desktop 构建用途。
+- Codex CLI 官方项目：[openai/codex](https://github.com/openai/codex)。
