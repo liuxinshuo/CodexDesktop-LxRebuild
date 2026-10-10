@@ -1,4 +1,4 @@
-# rebuild-codex-desktop
+# CodexDesktop-LxRebuild
 
 把 Codex Desktop App 重新打包成 Windows x64 免安装 zip。
 
@@ -6,7 +6,7 @@
 
 ## 下载与更新
 
-最新版本在 [GitHub Releases](https://github.com/WSGsety/rebuild-codex-desktop/releases)。每次发布保留全量包，可以安全覆盖上一版时额外提供增量包，附件命名如下：
+最新版本在 [GitHub Releases](https://github.com/liuxinshuo/CodexDesktop-LxRebuild/releases)。每次发布保留全量包，可以安全覆盖上一版时额外提供增量包，附件命名如下：
 
 ```text
 Codex-win-x64-<App版本>-cli-<CLI版本>.zip
@@ -99,3 +99,4 @@ out/Codex-win-x64-<App版本>-cli-<CLI版本>.zip
 重打包流程基于 [Haleclipse/CodexDesktop-Rebuild](https://github.com/Haleclipse/CodexDesktop-Rebuild) 整理，并收窄为 Windows x64 Desktop App 构建。
 
 OpenAI Codex 原始项目：[openai/codex](https://github.com/openai/codex)
+本仓库导入自 [WSGsety/rebuild-codex-desktop](https://github.com/WSGsety/rebuild-codex-desktop)，使用独立仓库自动构建与发布。
