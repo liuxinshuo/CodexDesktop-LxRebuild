@@ -20,6 +20,7 @@ const PATCHES = [
   "patch-updater.js",
   "patch-contained-core.js",
   "patch-archive-delete.js",
+  "patch-project-sort.js",
 ];
 
 function main() {
