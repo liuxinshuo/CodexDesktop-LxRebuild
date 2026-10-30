@@ -98,8 +98,9 @@ function main() {
 
   const bundles = locateBundles({
     dir: "build",
-    pattern: /^main(-[^.]+)?\.js$/,
+    pattern: /\.js$/,
     platform,
+    all: true,
   });
 
   if (bundles.length === 0) {
@@ -108,8 +109,10 @@ function main() {
   }
 
   for (const bundle of bundles) {
-    console.log(`\n-- [${bundle.platform}] ${relPath(bundle.path)}`);
     const source = fs.readFileSync(bundle.path, "utf-8");
+    // 上游可将 about 面板移入任意主进程分块，不再依赖 main*.js 文件名。
+    if (!source.includes("copyright")) continue;
+    console.log(`\n-- [${bundle.platform}] ${relPath(bundle.path)}`);
     console.log(`   size: ${(source.length / 1024 / 1024).toFixed(1)} MB`);
 
     const t0 = Date.now();
