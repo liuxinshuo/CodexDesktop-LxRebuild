@@ -95,7 +95,12 @@ test("Windows 自带解压也能覆盖增量，包括中文和空格路径", { s
   execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand",
     Buffer.from(command, "utf16le").toString("base64")], {
     stdio: "pipe",
-    env: { ...process.env, UPDATE_TEST_ZIP: path.join(out, result.zipName), UPDATE_TEST_DIR: manualDir },
+    env: {
+      ...process.env,
+      // 使用 Windows PowerShell 自带的归档模块，避免继承 GitHub Actions 的 PowerShell 7 模块路径。
+      PSModulePath: path.join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "Modules"),
+      UPDATE_TEST_ZIP: path.join(out, result.zipName), UPDATE_TEST_DIR: manualDir,
+    },
   });
   for (const name of ["ChatGPT.exe", "build-info.json", "resources/中文 文件.txt", "resources/new.dll"]) {
     assert.deepEqual(fs.readFileSync(path.join(manualDir, name)), fs.readFileSync(path.join(current, name)));
