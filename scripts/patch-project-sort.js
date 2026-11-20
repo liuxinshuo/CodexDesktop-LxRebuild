@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /** 打包前修复项目标题始终采用手动顺序的问题；不绑定资源 hash 或压缩符号名。 */
 const fs = require("node:fs");
+const path = require("node:path");
 const acorn = require("acorn");
-const { locateBundles, relPath } = require("./patch-util");
+const { SRC_DIR, relPath } = require("./patch-util");
 
 const MARKER = "lx-project-sort-v1";
 const ID = "[A-Za-z_$][\\w$]*";
@@ -38,10 +39,11 @@ function patchProjectSort(code) {
       if (node.type !== "CallExpression" || !member(node.callee, "sort")) return false;
       const outer = node.callee.object;
       const inner = outer?.callee?.object;
+      const kind = inner?.arguments[0]?.body;
       return member(outer?.callee, "filter") && member(inner?.callee, "filter") &&
         outer.arguments[0]?.body?.operator === "!" && member(outer.arguments[0].body.argument, "pinned") &&
-        inner.arguments[0]?.body?.operator === "===" && member(inner.arguments[0].body.left, "kind") &&
-        textValue(inner.arguments[0].body.right) === "project";
+        kind?.operator === "===" && ((member(kind.left, "kind") && textValue(kind.right) === "project") ||
+          (member(kind.right, "kind") && textValue(kind.left) === "project"));
     });
     const orderOptions = nodes.filter(({ node, parent }) => node.type === "Property" && node.key.name === "projectOrder" && property(parent, "pinnedSortMode"));
     if (sorts.length || orderOptions.length) candidates.push({ selector, nodes, sorts, orderOptions });
@@ -56,7 +58,8 @@ function patchProjectSort(code) {
   if (preferences.length !== 1) throw new Error("Project sort: cannot resolve sidebar preferences");
   const mode = `${source(preferences[0].object)}.projectSortMode`;
   const compare = sort.arguments[0];
-  const manualComparator = new RegExp(`^\\((${ID}),(${ID})\\)=>\\((${ID})\\.get\\(\\1\\.key\\)\\?\\?2\\*\\*53-1\\)-\\(\\3\\.get\\(\\2\\.key\\)\\?\\?2\\*\\*53-1\\)$`);
+  const unranked = "(?:2\\*\\*53-1|Number\\.MAX_SAFE_INTEGER)";
+  const manualComparator = new RegExp(`^\\((${ID}),(${ID})\\)=>\\((${ID})\\.get\\(\\1\\.key\\)\\?\\?${unranked}\\)-\\(\\3\\.get\\(\\2\\.key\\)\\?\\?${unranked}\\)$`);
   const manual = source(compare).match(manualComparator);
   if (!manual) {
     // 仅当两个环节都明确由模式控制时，才认可上游已有排序；未知改动不能静默放行。
@@ -80,10 +83,10 @@ function patchProjectSort(code) {
       key.consequent.type !== "CallExpression" || key.alternate.type !== "CallExpression") {
     throw new Error("Project sort: cannot resolve local/linked project keys");
   }
-  const localKey = source(key.consequent.callee), cloudKey = source(key.alternate.callee);
+  const localKey = `(${source(key.consequent.callee)})`, cloudKey = `(${source(key.alternate.callee)})`;
   const links = source(linked.callee.object);
   const recency = new Set(nodes.filter(({ node }) => node.type === "Property" && node.key.name === "recencyAt" &&
-    node.value.type === "CallExpression" && node.value.callee.type === "Identifier" && node.value.arguments[0]?.name === getter)
+    node.value.type === "CallExpression" && node.value.arguments[0]?.name === getter)
     .map(({ node }) => source(node.value.callee)));
   const projects = new Set(nodes.filter(({ node }) => node.type === "CallExpression" && member(node.callee, "map") &&
     node.arguments[0]?.params?.[0]?.type === "ObjectPattern" && property(node.arguments[0].params[0], "isPinned") &&
@@ -95,7 +98,7 @@ function patchProjectSort(code) {
   // 新增局部变量统一使用独立前缀，避免遮蔽上游可能缩短为 e/t 的符号。
   if (source(selector).includes("__lx")) throw new Error("Project sort: injected identifier collision");
   const replacement = `/* ${MARKER}: 最近更新采用项目和会话最新活动；手动模式保留原顺序。 */(()=>{` +
-    `const __lxMode=${mode},__lxRecency=new Map(${source(groups)}.projectGroups.map(__lxGroup=>{let __lxLinked=${links}.get(__lxGroup.projectId);return[__lxLinked==null?${localKey}(__lxGroup.projectId):${cloudKey}(__lxLinked),__lxGroup.threadKeys.reduce((__lxMax,__lxThread)=>Math.max(__lxMax,${[...recency][0]}(${getter},__lxThread)),Math.max(__lxGroup.projectUpdatedAt??0,__lxGroup.projectCreatedAt??0))]}));` +
+    `const __lxMode=${mode},__lxRecency=new Map(${source(groups)}.projectGroups.map(__lxGroup=>{let __lxLinked=${links}.get(__lxGroup.projectId);return[__lxLinked==null?${localKey}(__lxGroup.projectId):${cloudKey}(__lxLinked),__lxGroup.threadKeys.reduce((__lxMax,__lxThread)=>Math.max(__lxMax,(${[...recency][0]})(${getter},__lxThread)),Math.max(__lxGroup.projectUpdatedAt??0,__lxGroup.projectCreatedAt??0))]}));` +
     `${[...projects][0]}.forEach(({project:__lxProject})=>{let __lxKey=${cloudKey}(__lxProject.gizmo.id),__lxTime=Date.parse(__lxProject.gizmo.updated_at??__lxProject.gizmo.created_at??\`\`);__lxRecency.set(__lxKey,Math.max(__lxRecency.get(__lxKey)??0,Number.isFinite(__lxTime)?__lxTime:0))});` +
     `${[...chats][0]}.forEach(__lxChat=>{if(__lxChat.projectId!=null){let __lxKey=${cloudKey}(__lxChat.projectId);__lxRecency.set(__lxKey,Math.max(__lxRecency.get(__lxKey)??0,__lxChat.recencyAt??0))}});` +
     `return ${source(sort.callee.object)}.sort(__lxMode===\`manual\`?${source(compare)}:(__lxA,__lxB)=>(__lxRecency.get(__lxB.key)??0)-(__lxRecency.get(__lxA.key)??0)||(${source(compare)})(__lxA,__lxB))})()`;
@@ -110,13 +113,33 @@ function patchProjectSort(code) {
 
 function main() {
   const args = process.argv.slice(2);
-  const platform = args.find((a) => ["mac-arm64", "mac-x64", "win"].includes(a));
-  const bundles = locateBundles({ dir: "assets", pattern: /^app-(?:initial|main)-.*\.js$/, ...(platform ? { platform } : {}) });
-  if (!bundles.length) throw new Error("Project sort: no sidebar bundle found; run sync-upstream first");
-  for (const bundle of bundles) {
-    const result = patchProjectSort(fs.readFileSync(bundle.path, "utf8"));
-    if (result.status === "patched" && !args.includes("--check")) fs.writeFileSync(bundle.path, result.code, "utf8");
-    console.log(`  [ok] ${relPath(bundle.path)}: ${result.status}${args.includes("--check") ? " (dry-run)" : ""}`);
+  const platforms = ["mac-arm64", "mac-x64", "win"];
+  const platform = args.find((arg) => platforms.includes(arg));
+  const dirs = (platform ? [platform] : platforms).map((name) =>
+    path.join(SRC_DIR, name, "_asar", "webview", "assets")).filter((dir) => fs.existsSync(dir));
+  const legacy = path.join(SRC_DIR, "webview", "assets");
+  if (!platform && dirs.length === 0 && fs.existsSync(legacy)) dirs.push(legacy);
+  if (!dirs.length) throw new Error("Project sort: no webview assets found; run sync-upstream first");
+
+  for (const dir of dirs) {
+    const targets = [];
+    // 上游可能把侧栏拆进 assets/async；按选择器语义筛选，资源名和 hash 每版都可变。
+    for (const entry of fs.readdirSync(dir, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".js")) continue;
+      const file = path.join(entry.parentPath, entry.name);
+      const code = fs.readFileSync(file, "utf8");
+      if (code.includes("({sidebarMode:") && code.includes(".projectGroups") &&
+          code.includes("pinnedSortMode:") && code.includes("projectOrder:")) {
+        targets.push({ file, code });
+      }
+    }
+    if (targets.length !== 1) {
+      throw new Error(`Project sort: expected one sidebar bundle in ${relPath(dir)}, found ${targets.length}; upstream review required`);
+    }
+    const [{ file, code }] = targets;
+    const result = patchProjectSort(code);
+    if (result.status === "patched" && !args.includes("--check")) fs.writeFileSync(file, result.code, "utf8");
+    console.log(`  [ok] ${relPath(file)}: ${result.status}${args.includes("--check") ? " (dry-run)" : ""}`);
   }
 }
 
