@@ -70,6 +70,8 @@ Get-FileHash -LiteralPath '实际下载的文件名.zip' -Algorithm SHA256
 4. 生成全量 ZIP；存在可用旧包时，尝试生成并验证增量 ZIP。
 5. 生成 SHA256 校验文件，发布到本仓库 Releases，并核对附件名称和大小。
 
+打包前会检查侧栏项目排序：命中“切换手动／最近更新后项目顺序不变”的已知代码结构时，按项目和会话的最新活动修复“最近更新”，并保留手动顺序。检测不依赖固定版本号或资源文件 hash；重复执行或识别到上游已按模式排序时跳过。无法确认的上游结构会使构建失败并提示核查，避免静默发布未验证的修复。可用 `node scripts/patch-project-sort.js win --check` 只检查、不写入。
+
 App 和 CLI 版本可在文件名、Release 说明及 `build-info.json` 中查看；Windows MSIX 包版本见 Release 说明。GitHub 定时调度可能延迟，05:43 是计划触发时间。提交代码不会立即触发正式打包；需要立即构建时，请手动运行工作流。
 
 ## 使用说明
