@@ -87,8 +87,9 @@ function main() {
 
   const bundles = locateBundles({
     dir: "build",
-    pattern: /^main(-[^.]+)?\.js$/,
+    pattern: /\.js$/,
     platform,
+    all: true,
   });
 
   if (bundles.length === 0) {
@@ -97,8 +98,10 @@ function main() {
   }
 
   for (const bundle of bundles) {
-    console.log(`\n-- [${bundle.platform}] ${relPath(bundle.path)}`);
     const source = fs.readFileSync(bundle.path, "utf-8");
+    // 只解析含目标属性的主进程分块，兼容新版拆包并避开无关 worker。
+    if (!["allowInspectElement", "allowDevtools", "allowDevTools"].some((key) => source.includes(key))) continue;
+    console.log(`\n-- [${bundle.platform}] ${relPath(bundle.path)}`);
     console.log(`   size: ${(source.length / 1048576).toFixed(1)} MB`);
 
     const t0 = Date.now();

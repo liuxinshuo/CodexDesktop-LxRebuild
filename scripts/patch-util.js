@@ -17,9 +17,10 @@ const PROJECT_ROOT = path.join(__dirname, "..");
  *   "assets" -> src/{plat}/webview/assets/
  * @param {RegExp} opts.pattern - Filename regex (e.g. /^index-.*\.js$/)
  * @param {string} [opts.platform] - Restrict to a single platform
+ * @param {boolean} [opts.all=false] - Return every matching chunk instead of one bundle
  * @returns {Array<{platform: string, path: string}>}
  */
-function locateBundles({ dir, pattern, platform }) {
+function locateBundles({ dir, pattern, platform, all = false }) {
   const dirMap = {
     build: (plat) => path.join(SRC_DIR, plat, "_asar", ".vite", "build"),
     assets: (plat) => path.join(SRC_DIR, plat, "_asar", "webview", "assets"),
@@ -45,6 +46,7 @@ function locateBundles({ dir, pattern, platform }) {
     if (fallback && fs.existsSync(fallback)) {
       const files = fs.readdirSync(fallback).filter((f) => pattern.test(f));
       if (files.length > 0) {
+        if (all) return files.map((f) => ({ platform: "legacy", path: path.join(fallback, f) }));
         // For build dir, prefer hashed file over plain
         const target =
           files.length > 1 ? files.find((f) => f !== "main.js") || files[0] : files[0];
@@ -62,6 +64,12 @@ function locateBundles({ dir, pattern, platform }) {
     const files = fs.readdirSync(d).filter((f) => pattern.test(f));
     if (files.length === 0) {
       console.warn(`  [!] ${plat}: no match for ${pattern}`);
+      continue;
+    }
+
+    // 新版主进程拆成多个分块；仅显式请求时返回全部，保持其他调用者的选择规则。
+    if (all) {
+      results.push(...files.map((f) => ({ platform: plat, path: path.join(d, f) })));
       continue;
     }
 
