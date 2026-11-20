@@ -25,10 +25,11 @@ function execute(code, mode, options = {}) {
   const values = { groups: { projectGroups: options.groups ?? groups, threadKeys: ["a", "b"] },
     links: options.links ?? new Map(), cloud: { projects: options.projects ?? [], chatTargets: options.chats ?? [] },
     prefs: { chatSortMode: mode, projectSortMode: mode }, saved: options.saved ?? saved };
+  const helpers = { Dx: id => "codex:project:" + id, Ox: id => "chatgpt:project:" + id,
+    QK: (_, key) => ({ a: 100, b: 300 }[key] ?? 0) };
   const context = { Q: null, atom: (_, selector) => selector,
     groups: "groups", links: "links", cloud: "cloud", prefs: "prefs", saved: "saved",
-    Dx: id => "codex:project:" + id, Ox: id => "chatgpt:project:" + id,
-    QK: (_, key) => ({ a: 100, b: 300 }[key] ?? 0), get: key => values[key],
+    ...helpers, helpers, get: key => values[key],
     layout: (projectEntries, options) => ({ projectEntries, options }) };
   vm.createContext(context);
   vm.runInContext(code + ";globalThis.output=select({sidebarMode:`codex`,mode:`project`},{get});", context);
@@ -72,6 +73,16 @@ test("兼容变量改名、单字符符号与旧版内联布局", () => {
   assert.equal(legacy.status, "patched");
   assert.deepEqual(execute(legacy.code, "manual"), saved);
   assert.deepEqual(execute(legacy.code, "updated_at"), ["codex:project:recent", "codex:project:empty", "codex:project:old"]);
+});
+
+test("兼容 Windows 新版分块的常量、比较方向与模块调用", () => {
+  const split = fixture.replaceAll("2**53-1", "Number.MAX_SAFE_INTEGER")
+    .replace("e.kind===`project`", '"project"===e.kind')
+    .replace(/\b(Dx|Ox|QK)\(/g, "(0,helpers.$1)(");
+  const { code, status } = patchProjectSort(split);
+  assert.equal(status, "patched");
+  assert.deepEqual(execute(code, "updated_at"), ["codex:project:recent", "codex:project:empty", "codex:project:old"]);
+  assert.deepEqual(execute(code, "manual"), saved);
 });
 
 test("上游明确按模式排序时保持原样，未知结构中止", () => {
