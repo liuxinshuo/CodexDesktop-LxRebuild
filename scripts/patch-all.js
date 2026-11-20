@@ -21,6 +21,7 @@ const PATCHES = [
   "patch-contained-core.js",
   "patch-archive-delete.js",
   "patch-project-sort.js",
+  "patch-sidebar-pagination.js",
 ];
 
 function main() {
