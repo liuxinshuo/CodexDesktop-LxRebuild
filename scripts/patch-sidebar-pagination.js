@@ -59,9 +59,21 @@ function patchSidebarPagination(code) {
 
   function findSection(sectionKey, listKey) {
     const section = one(objects.filter((node) => literal(property(node, "sectionKey")) === sectionKey &&
-      property(node, "onCollapsedChange") && collect(property(node, "children")).some((child) => member(property(child, "keys"), listKey))), `${sectionKey} section`);
-    const list = one(collect(property(section, "children")).filter((node) => member(property(node, "keys"), listKey)), `${sectionKey} list`);
-    return { section, list, keys: source(property(list, "keys")), collapsed: source(property(section, "collapsed")) };
+      property(node, "onCollapsedChange")), `${sectionKey} section`);
+    const children = property(section, "children");
+    const hasListKeys = (node) => member(property(node, "keys"), listKey);
+    let lists = collect(children).filter(hasListKeys);
+    let archived;
+    // 新版把最近列表先渲染为局部变量，归档模式则渲染独立组件。
+    if (sectionKey === "chats" && lists.length === 0 && children?.type === "ConditionalExpression" &&
+        children.alternate.type === "Identifier") {
+      const fragment = one(component.body.body.flatMap((node) => node.declarations ?? [])
+        .filter(({ id, init }) => id.name === children.alternate.name && init?.end < section.start), "recents fragment");
+      lists = collect(fragment.init).filter(hasListKeys);
+      archived = source(children.test);
+    }
+    const list = one(lists, `${sectionKey} list`);
+    return { section, list, keys: source(property(list, "keys")), collapsed: source(property(section, "collapsed")), archived };
   }
   const project = findSection("threads", "projectKeys");
   const chats = findSection("chats", "chatKeys");
@@ -101,8 +113,9 @@ function patchSidebarPagination(code) {
     const [__lxLoading,__lxSetLoading]=(0,${react}.useState)(false);
   `);
   const startsSection = (node, section) => node.start <= section.start && section.end <= node.end;
-  const recentStatement = one(component.body.body.filter((node) => startsSection(node, chats.section)), "recents render statement");
-  if (recentStatement.type !== "VariableDeclaration" || recentStatement.declarations[0].init?.arguments?.[1] !== chats.section ||
+  const recentStatement = one(component.body.body.filter((node) => startsSection(node, chats.list)), "recents render statement");
+  const recentProps = recentStatement.declarations?.[0].init?.arguments?.[1];
+  if (!recentProps || !startsSection(recentProps, chats.list) ||
       !component.body.body.some((node) => node.type === "VariableDeclaration" && node.declarations.some(({ init }) => init?.arguments?.[1] === project.section))) {
     throw new Error("Sidebar pagination: section render moved into a memoized expression; upstream review required");
   }
@@ -112,11 +125,11 @@ function patchSidebarPagination(code) {
     const __lxFill=${fillRecentCatalog.toString()};
     const __lxVisible=()=>${store}.get(${query.arguments.map(source).join(",")}).layout.chatKeys.length;
     (0,${react}.useEffect)(()=>{
-      if(${unread}||${chats.collapsed}||!${reader}||!${scope})return;
+      if(${chats.archived ? `(${chats.archived})||` : ""}${unread}||${chats.collapsed}||!${reader}||!${scope})return;
       let cancelled=false;
       __lxFill(${reader},${scope},__lxPageSize,__lxVisible,()=>cancelled).catch(()=>{});
       return()=>{cancelled=true};
-    },[${unread},${chats.collapsed},${reader},${scope},${store},${source(query.arguments[1])}]);
+    },[${chats.archived ? `${chats.archived},` : ""}${unread},${chats.collapsed},${reader},${scope},${store},${source(query.arguments[1])}]);
   `);
 
   append(project.list, `expanded:false,forcedVisibleItemKey:void 0,revealAllOnExpand:false,onExpandedChange:void 0,
@@ -141,9 +154,11 @@ function patchSidebarPagination(code) {
 
   // 键盘导航与项目内容的延迟显示都必须使用同一页边界。
   for (const [section, name, limit] of [[project, "projects", "__lxProjects"], [chats, "chats", "__lxRecents"]]) {
-    const call = one(calls.filter(({ arguments: args }) => literal(args[0]) === name && source(args[1]) === section.keys), `${name} navigation list`);
+    // 新版导航函数在分区名之前接收一个上下文参数。
+    const arg = one(calls.flatMap(({ arguments: args }) => args.slice(0, 2).flatMap((node, index) =>
+      literal(node) === name && source(args[index + 1]) === section.keys ? [args[index + 1]] : [])), `${name} navigation list`);
     const keys = `${section.keys}.slice(0,${limit})`;
-    replace(call.arguments[1], name === "chats" ? `${unread}?${section.keys}:${keys}` : keys);
+    replace(arg, name === "chats" ? `${unread}?${section.keys}:${keys}` : keys);
   }
   const deferred = calls.filter((call) => member(call.callee, "filter") && source(call.callee.object) === project.keys && source(call).includes("showAllProjects"));
   if (deferred.length) replace(one(deferred, "visible project selector"), `${project.keys}.slice(0,__lxProjects)`);

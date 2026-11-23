@@ -23,10 +23,18 @@ const fixture = `function sidebar(input){
   return {chats:chats.children[0],projects:projects.children[0],nav};
 }`;
 
-test("projects and recents open at five, increase by five, and reset independently", async () => {
-  const { code } = patchSidebarPagination(fixture);
+const archivedFixture = fixture
+  .replace(/let chats=jsx\(section,\{[^\n]+children:\[/, "const recentList=jsx(section,{children:[")
+  .replace("  let projects=", `  let chats=jsx(section,{label:chatLabel,sectionKey:"chats",collapsed,
+    onCollapsedChange:value=>save(store,"chats",value),children:input.archived?jsx(section,{children:["archive"]}):recentList});
+  let projects=`)
+  .replace("chats:chats.children[0]", "chats:chats.children.children[0]")
+  .replace(/navigation\(/g, "navigation(input,");
+
+async function verifyPagination(inputFixture, withArchive) {
+  const { code } = patchSidebarPagination(inputFixture);
   assert.deepEqual(patchSidebarPagination(code), { code, status: "already-patched" });
-  assert.throws(() => patchSidebarPagination(fixture.replace("conversationByKey", "renamed")), /upstream review required/);
+  assert.throws(() => patchSidebarPagination(inputFixture.replace("conversationByKey", "renamed")), /upstream review required/);
 
   const keys = Array.from({ length: 16 }, (_, index) => String(index));
   const state = [];
@@ -38,11 +46,11 @@ test("projects and recents open at five, increase by five, and reset independent
       state[index] ??= initial;
       return [state[index], (update) => { state[index] = typeof update === "function" ? update(state[index]) : update; }];
     },
-    useEffect() {},
+    useEffect(effect) { effect(); },
   };
   const sidebar = vm.runInNewContext(code + ";sidebar", {
     hooks, model, read: () => model, layoutSelector: null, options: null, section: null, list: null,
-    jsx: (_, props) => props, navigation: (_, keys) => keys,
+    jsx: (_, props) => props, navigation: (...args) => args.at(-1),
   });
   const render = (prefs = {}) => { cursor = 0; return sidebar({ cloud: {}, ...prefs }); };
   let { projects, chats, nav } = render();
@@ -62,7 +70,19 @@ test("projects and recents open at five, increase by five, and reset independent
   render({ projectCollapsed: true });
   assert.equal(render().projects.maxItems, 5);
   assert.equal(render({ unreadsOnly: true }).chats.paginationMode, "infiniteScroll");
-});
+  if (withArchive) {
+    let reads = 0;
+    const reader = {
+      async ensurePage() { reads++; },
+      async waitForInitialMaterialization() {},
+    };
+    assert.equal(render({ archived: true, catalogPageScope: {}, reader }).chats, "archive");
+    assert.equal(reads, 0);
+  }
+}
+
+test("projects and recents open at five, increase by five, and reset independently", () => verifyPagination(fixture));
+test("paginate the separate recents fragment without loading it in archive mode", () => verifyPagination(archivedFixture, true));
 
 test("recents publish deferred results and advance across filtered pages", async () => {
   const rows = Array.from({ length: 17 }, (_, index) => index < 2 || index >= 12);
